@@ -108,8 +108,8 @@ class Publisher:
                 return False, "git commit 失败: " + msg[-200:]
             return True, "git 已提交"
         if index == 1:  # 创建远程仓库并推送
-            _, rem = _run(["git", "remote", "get-url", "origin"])
-            if rem.strip():
+            rc, rem = _run(["git", "remote", "get-url", "origin"])
+            if rc == 0 and rem.strip():
                 return True, "远程已存在，跳过创建"
             target = "{}/{}".format(self.github_user, self.repo_name)
             rc, msg = _run([gh, "repo", "create", target,

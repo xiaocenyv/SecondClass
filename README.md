@@ -7,6 +7,8 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows%2010%2B-blue)
 ![Version](https://img.shields.io/badge/Version-2.0.0-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
+[![GitHub Downloads](https://img.shields.io/github/downloads/xiaocenyv/SecondClass/v2.0.0/total?color=green)](https://github.com/xiaocenyv/SecondClass/releases/latest)
+[![GitHub Stars](https://img.shields.io/github/stars/xiaocenyv/SecondClass?color=green)](https://github.com/xiaocenyv/SecondClass)
 
 ![主界面](assets/screens/main.png)
 
