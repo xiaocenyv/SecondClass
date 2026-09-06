@@ -55,6 +55,7 @@ class AnswerEngine:
         self.on_progress = on_progress or (lambda cur, total, article_id: None)
         self.stats = RunStats()
         self._global_stop = False  # 今日已达等接口级停止
+        self._seen_articles: set = set()  # 本次运行已处理的文章（防分页重复）
 
     # ---------- 对外入口 ----------
 
@@ -86,6 +87,10 @@ class AnswerEngine:
                 if self._stop_now():
                     break
                 aid = str(article.get("id", ""))
+                if aid in self._seen_articles:
+                    self.on_log("info", "文章 {}：本次运行已处理过，跳过（去重）".format(aid))
+                    continue
+                self._seen_articles.add(aid)
                 self.on_progress(idx, len(articles), aid)
                 is_video = bool(article.get("videoUrl"))
                 if is_video and not try_video:

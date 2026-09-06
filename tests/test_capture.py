@@ -1,93 +1,67 @@
 # -*- coding: utf-8 -*-
-"""抓包助手核心逻辑测试（addon 提取，不启动真实代理）。"""
+"""抓包助手核心逻辑测试：头部解析、凭据保存、证书生成（不启真实代理）。"""
 import os
 import tempfile
 import unittest
 from pathlib import Path
 
-
-class FakeHeaders:
-    def __init__(self, d):
-        self._d = d
-
-    def get(self, name, default=""):
-        return self._d.get(name, default)
+from capture import certgen
+from capture.proxy import _parse_headers, save_credentials
 
 
-class FakeRequest:
-    def __init__(self, host, headers):
-        self.host = host
-        self.headers = FakeHeaders(headers)
+class TestParseHeaders(unittest.TestCase):
+    def test_basic(self):
+        data = (b"GET /x HTTP/1.1\r\nHost: a.com\r\n"
+                b"key_session: KS1\r\nsecret: SEC1\r\n")
+        h = _parse_headers(data)
+        self.assertEqual(h["key_session"], "KS1")
+        self.assertEqual(h["secret"], "SEC1")
+        self.assertEqual(h["host"], "a.com")
+
+    def test_case_insensitive(self):
+        h = _parse_headers(b"X-Key: AAAA:BBBB\r\n")
+        self.assertEqual(h["x-key"], "AAAA:BBBB")
 
 
-class FakeFlow:
-    def __init__(self, host, headers):
-        self.request = FakeRequest(host, headers)
+class TestSaveCredentials(unittest.TestCase):
+    def test_save(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = os.environ.get("APPDATA")
+            os.environ["APPDATA"] = tmp
+            try:
+                path = save_credentials("K", "S")
+                self.assertTrue(path.exists())
+                import json
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.assertEqual(data["key_session"], "K")
+                self.assertEqual(data["secret"], "S")
+            finally:
+                if old is None:
+                    os.environ.pop("APPDATA", None)
+                else:
+                    os.environ["APPDATA"] = old
 
 
-class FakeCatcher:
-    """覆写 finish 避免 os._exit。"""
-
-    def __init__(self, host="dekt.hfut.edu.cn"):
-        from capture.addon import CredentialCatcher
-        self.inner = CredentialCatcher(host)
-        self.exited = False
-        self.inner.finish = self._fake_finish
-
-    def _fake_finish(self):
-        self.exited = True
-
-    def request(self, flow):
-        self.inner.request(flow)
-
-
-class TestAddon(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.old = os.environ.get("APPDATA")
-        os.environ["APPDATA"] = self.tmp.name
-
-    def tearDown(self):
-        if self.old is None:
-            os.environ.pop("APPDATA", None)
-        else:
-            os.environ["APPDATA"] = self.old
-        self.tmp.cleanup()
-
-    def test_captures_credentials(self):
-        c = FakeCatcher()
-        c.request(FakeFlow("dekt.hfut.edu.cn",
-                           {"key_session": "KS1", "secret": "SEC1"}))
-        self.assertTrue(c.exited)
-        path = Path(self.tmp.name) / "SecondClass" / "captured.json"
-        import json
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        self.assertEqual(data["key_session"], "KS1")
-        self.assertEqual(data["secret"], "SEC1")
-
-    def test_ignores_other_host(self):
-        c = FakeCatcher()
-        c.request(FakeFlow("other.example.com",
-                           {"key_session": "K", "secret": "S"}))
-        self.assertFalse(c.exited)
-
-    def test_ignores_missing_secret(self):
-        c = FakeCatcher()
-        c.request(FakeFlow("dekt.hfut.edu.cn", {"key_session": "K"}))
-        self.assertFalse(c.exited)
-
-    def test_only_once(self):
-        c = FakeCatcher()
-        c.request(FakeFlow("dekt.hfut.edu.cn",
-                           {"key_session": "A", "secret": "B"}))
-        c.request(FakeFlow("dekt.hfut.edu.cn",
-                           {"key_session": "C", "secret": "D"}))
-        import json
-        with open(Path(self.tmp.name) / "SecondClass" / "captured.json",
-                  "r", encoding="utf-8") as f:
-            data = json.load(f)
-        self.assertEqual(data["key_session"], "A")
+class TestCertGen(unittest.TestCase):
+    def test_ca_and_issue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = os.environ.get("APPDATA")
+            os.environ["APPDATA"] = tmp
+            try:
+                key_pem, cert_pem = certgen.ensure_ca()
+                self.assertIn("BEGIN CERTIFICATE", cert_pem)
+                fp = certgen.ca_fingerprint()
+                self.assertEqual(len(fp), 64)
+                # 签发目标证书
+                k, c = certgen.issue_cert("dekt.hfut.edu.cn")
+                self.assertIn(b"PRIVATE KEY", k)
+                self.assertIn(b"BEGIN CERTIFICATE", c)
+            finally:
+                if old is None:
+                    os.environ.pop("APPDATA", None)
+                else:
+                    os.environ["APPDATA"] = old
 
 
 if __name__ == "__main__":

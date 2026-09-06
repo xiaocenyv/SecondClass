@@ -14,8 +14,13 @@ DEFAULTS = {
     "wait_seconds": 3,        # 每篇文章作答前的等待秒数（防频繁请求，可设 0）
     "remember_credentials": True,
     "auto_login_username": "",  # 只记用户名，绝不保存密码
-    "github_repo": "",          # 形如 "owner/repo"，用于检查更新（发布后填写）
+    "github_repo": "xiaocenyv/SecondClass",  # 检查更新用
     "last_update_check": 0,     # 上次检查更新的时间戳
+    "auto_daily_enabled": False,  # 每日自动刷题总开关
+    "auto_daily_time": "12:30",   # 每天固定时间
+    "auto_login_trigger": True,   # 开机登录触发
+    "notify_mode": "banner",      # banner / popup / log
+    "notify_on_fail": True,       # 失败时也通知
 }
 
 

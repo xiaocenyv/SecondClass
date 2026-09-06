@@ -40,9 +40,9 @@ class MainWindow:
         self.root.after(100, self._drain_messages)
         self.root.after(150, self._drain_captcha)
 
-        # 首次向导：尚未配置凭据时自动弹出抓包教程
+        # 首次向导：尚未配置凭据时自动弹出配置向导
         if not config.get("key_session", "") or not config.get("secret", ""):
-            self.root.after(500, self._open_tutorial)
+            self.root.after(500, self._open_wizard)
         # 检查更新（有 github_repo 配置时，后台静默查询）
         github_repo = config.get("github_repo", "")
         if github_repo:
@@ -170,6 +170,36 @@ class MainWindow:
         ttk.Label(login, text="成功后自动尝试换取第二课堂凭据（若协议支持）；当前为实验能力，"
                               "不保证可用。", foreground="#888888").pack(side="left")
 
+        # 自动与通知区
+        auto = ttk.LabelFrame(outer, text="自动与通知（每天自动刷分 + 结果通知）", padding=8)
+        auto.pack(fill="x", pady=6)
+        auto.grid_columnconfigure(1, weight=1)
+        self.var_daily = tk.BooleanVar(value=False)
+        ttk.Checkbutton(auto, text="开启每日自动刷题",
+                        variable=self.var_daily).grid(row=0, column=0, sticky="w")
+        ttk.Label(auto, text="每天时间").grid(row=0, column=2, sticky="e", padx=(16, 4))
+        self.var_time = tk.StringVar(value="12:30")
+        ttk.Entry(auto, textvariable=self.var_time, width=8).grid(row=0, column=3, sticky="w")
+        self.var_logon = tk.BooleanVar(value=True)
+        ttk.Checkbutton(auto, text="开机登录时也刷",
+                        variable=self.var_logon).grid(row=0, column=4, sticky="w", padx=(12, 0))
+        ttk.Label(auto, text="通知方式").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.var_notify = tk.StringVar(value="banner")
+        ttk.Combobox(auto, textvariable=self.var_notify, width=8, state="readonly",
+                     values=["banner", "popup", "log"]).grid(row=1, column=1, sticky="w",
+                                                             pady=(6, 0))
+        self.var_fail = tk.BooleanVar(value=True)
+        ttk.Checkbutton(auto, text="失败时也通知",
+                        variable=self.var_fail).grid(row=1, column=2, sticky="w",
+                                                     padx=(16, 0), pady=(6, 0))
+        ttk.Button(auto, text="保存自动设置", command=self._save_auto,
+                   style="Ghost.TButton").grid(row=0, column=5, rowspan=2,
+                                               sticky="e", padx=(12, 0))
+        self.lbl_auto_state = ttk.Label(auto, text="", foreground="#8a8f98")
+        self.lbl_auto_state.grid(row=2, column=0, columnspan=6, sticky="w", pady=(8, 0))
+        self.lbl_auto_result = ttk.Label(auto, text="", foreground="#1a7f37")
+        self.lbl_auto_result.grid(row=3, column=0, columnspan=6, sticky="w")
+
         # 操作按钮
         ops = ttk.Frame(outer)
         ops.pack(fill="x", pady=6)
@@ -205,6 +235,36 @@ class MainWindow:
         self.var_wait.set(self.config.get("wait_seconds", 3))
         self.var_video.set(bool(self.config.get("try_video", False)))
         self.var_user.set(self.config.get("auto_login_username", ""))
+        self.var_daily.set(bool(self.config.get("auto_daily_enabled", False)))
+        self.var_time.set(self.config.get("auto_daily_time", "12:30"))
+        self.var_logon.set(bool(self.config.get("auto_login_trigger", True)))
+        self.var_notify.set(self.config.get("notify_mode", "banner"))
+        self.var_fail.set(bool(self.config.get("notify_on_fail", True)))
+        self._refresh_auto_state()
+
+    def _refresh_auto_state(self):
+        from core.scheduler import query
+        try:
+            st = query()
+            self.lbl_auto_state.configure(
+                text="任务计划：{} {}".format(
+                    "登录触发 ✅" if st["logon"] else "登录触发 ✗",
+                    "每天定时 ✅" if st["daily"] else "每天定时 ✗"))
+        except Exception:
+            self.lbl_auto_state.configure(text="任务计划状态未知")
+        from core.daily import read_results
+        try:
+            rows = read_results(1)
+            if rows:
+                r = rows[-1]
+                mark = {"completed": "✅ 已完成", "failed": "⚠️ 未完成",
+                        "no-credentials": "⚠️ 未配置凭据"}.get(r.get("status"), "?")
+                self.lbl_auto_result.configure(
+                    text="上次自动运行 {}　{}　{}".format(
+                        r.get("time", "")[:16], mark,
+                        str(r.get("detail", ""))[:60]))
+        except Exception:
+            pass
 
     def _toggle_show(self):
         show = self.var_show.get()
@@ -227,8 +287,44 @@ class MainWindow:
         self.config.save()
         self._log("info", "凭据与参数已保存。")
 
+    def _save_auto(self):
+        """保存自动设置并注册任务计划。"""
+        t = (self.var_time.get().strip() or "12:30")
+        if len(t) != 5 or t[2] != ":" or not t[:2].isdigit() or not t[3:].isdigit():
+            self._log("error", "时间格式应为 HH:MM（如 12:30）")
+            return
+        if not (0 <= int(t[:2]) <= 23 and 0 <= int(t[3:]) <= 59):
+            self._log("error", "时间超出范围")
+            return
+        enabled = bool(self.var_daily.get())
+        self.config.patch(auto_daily_enabled=enabled,
+                          auto_daily_time=t,
+                          auto_login_trigger=bool(self.var_logon.get()),
+                          notify_mode=self.var_notify.get(),
+                          notify_on_fail=bool(self.var_fail.get()))
+        self.config.save()
+        import sys as _sys
+        import os as _os
+        from core.scheduler import register
+        if getattr(_sys, "frozen", False):
+            prefix = '"{}"'.format(_sys.executable)
+        else:
+            app_path = _os.path.join(_os.path.dirname(_os.path.dirname(
+                _os.path.abspath(__file__))), "app.py")
+            prefix = '"{}" "{}"'.format(_sys.executable, app_path)
+        msgs = register(prefix, enabled and bool(self.var_logon.get()),
+                        enabled, t)
+        for m in msgs:
+            self._log("info", m)
+        self._refresh_auto_state()
+        self._log("success", "自动设置已保存。")
+
     def _open_tutorial(self):
         TutorialWindow(self.root)
+
+    def _open_wizard(self):
+        from gui.setup_wizard import SetupWizard
+        SetupWizard(self.root, self.config)
 
     def _open_capture(self):
         from gui.capture_window import CaptureWindow
