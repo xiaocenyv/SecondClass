@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+build/
+dist/
+*.egg-info/
+
+# 本地数据（凭据/缓存/日志绝不上传）
+config.json
+answer_cache.json
+update_cache.json
+*.log
+logs/
+
+# 中间文件
+*.tmp
+gh.zip
+tools/gh/
