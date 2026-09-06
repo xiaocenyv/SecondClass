@@ -28,10 +28,7 @@ jobs:
         run: python scripts/make_icon.py
 
       - name: Build exe
-        run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed ^
-            --name SecondClass --icon assets/app.ico ^
-            --version-file version_info.txt app.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name SecondClass --icon assets/app.ico --version-file version_info.txt app.py
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
