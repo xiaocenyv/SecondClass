@@ -21,13 +21,17 @@ LOG_TAG = {"info": ("#333333", ""), "debug": ("#888888", ""),
 
 
 class MainWindow:
-    def __init__(self, root: tk.Tk, config: Config):
+    def __init__(self, root: tk.Tk, config: Config, enable_tray: bool = True):
         self.root = root
         self.config = config
         self.cache = AnswerCache()
         self.worker: Worker | None = None
         self._captcha_q: queue.Queue = queue.Queue()
         self._captcha_tl: tk.Toplevel | None = None
+        self.tray = None
+        self._tray_test = threading.Event()
+        self._tray_started = False
+        self.q: queue.Queue = queue.Queue()  # 托盘命令/内部消息队列
 
         root.title("{} v{}".format(APP_TITLE, APP_VERSION))
         root.geometry("900x700")
@@ -39,6 +43,10 @@ class MainWindow:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_messages)
         self.root.after(150, self._drain_captcha)
+
+        # 系统托盘（仅 Windows；--smoke 或不可用时跳过）
+        if enable_tray:
+            self._start_tray()
 
         # 启动自检：清理上次残留代理设置（如抓包异常退出留下的）
         self.root.after(300, self._cleanup_stale_proxy)
@@ -324,6 +332,14 @@ class MainWindow:
             self._log("info", m)
         self._refresh_auto_state()
         self._log("success", "自动设置已保存。")
+        if self.tray:
+            try:
+                desc = "SecondClass · 第二课堂自动刷题"
+                if enabled:
+                    desc += " · 每日 {} 自动".format(t)
+                self.tray.set_tooltip(desc)
+            except Exception:
+                pass
 
     def _cleanup_stale_proxy(self):
         """后台清理残留代理设置（上次抓包异常退出可能遗留）。"""
@@ -360,6 +376,78 @@ class MainWindow:
         self.config.save()
         self._log("success", "凭据已填入并保存（来自抓包助手）。可直接点「测试连接」验证。")
 
+    # ---------------- 系统托盘 ----------------
+
+    def _start_tray(self):
+        from core.tray import TrayIcon, AVAILABLE
+        if not AVAILABLE:
+            return
+        desc = "SecondClass · 第二课堂自动刷题"
+        if self.config.get("auto_daily_enabled", False):
+            desc += " · 每日 {} 自动".format(self.config.get("auto_daily_time", ""))
+        try:
+            self.tray = TrayIcon(on_command=self._on_tray_cmd, tooltip=desc)
+            if self.tray.start():
+                self._tray_started = True
+        except Exception:
+            self.tray = None
+
+    def _on_tray_cmd(self, cmd: str):
+        """托盘消息线程→主队列（线程安全）。"""
+        self.q.put(("tray_cmd", cmd))
+
+    def _handle_tray_cmd(self, cmd: str):
+        if cmd == "open":
+            self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.after(100, lambda: self.root.attributes("-topmost", False))
+        elif cmd == "start":
+            if not self._guard_busy():
+                self._start()
+        elif cmd == "toggle_auto":
+            cur = bool(self.config.get("auto_daily_enabled", False))
+            self.var_daily.set(not cur)
+            self._save_auto()
+        elif cmd == "quit":
+            self._quit_through_tray()
+
+    def _quit_through_tray(self):
+        if self.worker and not self.worker.finished():
+            if not messagebox.askyesno("确认退出", "刷题任务还在运行，确定退出吗？"):
+                return
+            self.worker.stop()
+        if self.tray:
+            try:
+                self.tray.stop()
+            except Exception:
+                pass
+        self.root.destroy()
+
+    def _on_close(self):
+        if self._tray_started and self.config.get("close_to_tray", True):
+            self.root.withdraw()
+            if not self.config.get("tray_hint_shown", False):
+                self.config.patch(tray_hint_shown=True)
+                self.config.save()
+                try:
+                    from core.notify import _toast
+                    _toast("SecondClass 仍在运行",
+                           "已最小化到系统托盘。\n右键托盘图标可打开窗口 / 开始刷题 / 退出。")
+                except Exception:
+                    pass
+            return
+        if self.worker and not self.worker.finished():
+            if not messagebox.askyesno("确认退出", "刷题任务还在运行，确定退出吗？"):
+                return
+            self.worker.stop()
+        if self.tray:
+            try:
+                self.tray.stop()
+            except Exception:
+                pass
+        self.root.destroy()
+
     # ---------------- 日志 ----------------
 
     def _log(self, level: str, text: str):
@@ -372,6 +460,14 @@ class MainWindow:
         self.txt_log.configure(state="disabled")
 
     def _drain_messages(self):
+        # 托盘/内部命令
+        try:
+            while True:
+                kind, payload = self.q.get_nowait()
+                if kind == "tray_cmd":
+                    self._handle_tray_cmd(payload)
+        except queue.Empty:
+            pass
         if self.worker:
             try:
                 while True:

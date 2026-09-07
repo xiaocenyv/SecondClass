@@ -22,6 +22,8 @@ DEFAULTS = {
     "notify_mode": "banner",      # banner / popup / log
     "notify_on_fail": True,       # 失败时也通知
     "wizard_done": False,         # 是否已弹过首次配置向导
+    "close_to_tray": True,        # 关闭窗口时最小化到系统托盘
+    "tray_hint_shown": False,     # 是否已提示过托盘运行方式
 }
 
 

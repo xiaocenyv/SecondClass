@@ -2,8 +2,8 @@
 # PyInstaller 版本资源（--version-file）
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(2, 1, 4, 0),
-        prodvers=(2, 1, 4, 0),
+        filevers=(2, 1, 5, 0),
+        prodvers=(2, 1, 5, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x40004,
@@ -16,11 +16,11 @@ VSVersionInfo(
             StringTable('080404b0', [
                 StringStruct('CompanyName', 'SecondClass Project'),
                 StringStruct('FileDescription', '合肥工业大学第二课堂自动刷题'),
-                StringStruct('FileVersion', '2.1.4.0'),
+                StringStruct('FileVersion', '2.1.5.0'),
                 StringStruct('InternalName', 'SecondClass'),
                 StringStruct('OriginalFilename', 'SecondClass.exe'),
                 StringStruct('ProductName', 'SecondClass'),
-                StringStruct('ProductVersion', '2.1.4.0'),
+                StringStruct('ProductVersion', '2.1.5.0'),
                 StringStruct('LegalCopyright', 'Copyright (C) 2026 SecondClass Project')
             ])
         ]),

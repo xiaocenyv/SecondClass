@@ -116,7 +116,7 @@ def main() -> int:
         try:
             root = tk.Tk()
             config = Config()
-            MainWindow(root, config)
+            MainWindow(root, config, enable_tray=not smoke)
             if smoke:
                 # 自检模式：1.5 秒后自动关闭；GUI 能正常构建即通过
                 def _quit():
