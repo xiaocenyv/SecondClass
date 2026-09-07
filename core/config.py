@@ -21,6 +21,7 @@ DEFAULTS = {
     "auto_login_trigger": True,   # 开机登录触发
     "notify_mode": "banner",      # banner / popup / log
     "notify_on_fail": True,       # 失败时也通知
+    "wizard_done": False,         # 是否已弹过首次配置向导
 }
 
 

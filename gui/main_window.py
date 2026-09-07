@@ -40,8 +40,14 @@ class MainWindow:
         self.root.after(100, self._drain_messages)
         self.root.after(150, self._drain_captcha)
 
-        # 首次向导：尚未配置凭据时自动弹出配置向导
-        if not config.get("key_session", "") or not config.get("secret", ""):
+        # 启动自检：清理上次残留代理设置（如抓包异常退出留下的）
+        self.root.after(300, self._cleanup_stale_proxy)
+
+        # 首次向导：从未弹过向导且尚未配置凭据时自动弹出（只弹一次）
+        if not config.get("wizard_done", False) and (
+                not config.get("key_session", "") or not config.get("secret", "")):
+            config.patch(wizard_done=True)
+            config.save()
             self.root.after(500, self._open_wizard)
         # 检查更新（有 github_repo 配置时，后台静默查询）
         github_repo = config.get("github_repo", "")
@@ -318,6 +324,18 @@ class MainWindow:
             self._log("info", m)
         self._refresh_auto_state()
         self._log("success", "自动设置已保存。")
+
+    def _cleanup_stale_proxy(self):
+        """后台清理残留代理设置（上次抓包异常退出可能遗留）。"""
+        def run():
+            try:
+                from capture import proxy_ctl
+                if proxy_ctl.cleanup_stale_proxy():
+                    self.root.after(0, lambda: self._log(
+                        "info", "检测到上次抓包残留的代理设置，已自动还原。"))
+            except Exception:
+                pass
+        threading.Thread(target=run, daemon=True).start()
 
     def _open_tutorial(self):
         TutorialWindow(self.root)

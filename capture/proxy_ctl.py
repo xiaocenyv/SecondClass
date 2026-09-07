@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Windows 系统代理控制与本地 MITM CA 证书管理（仅 Windows）。"""
 import ctypes
+import socket
 import subprocess
 import winreg
 from pathlib import Path
@@ -119,19 +120,74 @@ def is_ca_trusted() -> bool:
 
 
 def install_ca() -> tuple[bool, str]:
-    """安装本地 CA 到当前用户受信任根（-user 免 UAC；失败则 UAC 提权兜底）。"""
+    """安装本地 CA 到当前用户受信任根。
+
+    首选 PowerShell X509Store API（免 UAC、免进程、ARM64 稳定），
+    certutil 降级兜底。返回 (是否已信任, 说明)。
+    """
     cer = ca_cert_file()
+    # 1) 已信任直接返回
+    if is_ca_trusted():
+        return True, "证书已信任"
+    # 2) PowerShell X509Store（CurrentUser\Root）
+    ps = (
+        "try {"
+        "$c = [System.Security.Cryptography.X509Certificates.X509Certificate2]"
+        "::new('{}');"
+        "$s = [System.Security.Cryptography.X509Certificates.X509Store]"
+        "::new('Root','CurrentUser');"
+        "$s.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite);"
+        "$s.Add($c);$s.Close();Write-Output 'OK'"
+        "} catch { Write-Output ('ERR: ' + $_.Exception.Message) }"
+    ).format(cer)
     try:
-        r = subprocess.run(["certutil", "-user", "-addstore", "-f", "Root", str(cer)],
-                           capture_output=True, text=True, errors="replace", timeout=30)
-        if r.returncode == 0:
-            return True, "证书已安装"
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                            "-Command", ps], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=60)
+        if "OK" in (r.stdout or ""):
+            if is_ca_trusted():
+                return True, "证书已安装（PowerShell）"
+        elif "ERR:" in (r.stdout or ""):
+            _certutil_fallback = (r.stdout or "").strip()
     except Exception:
         pass
+    # 3) certutil -user 兜底
     try:
-        subprocess.Popen(["powershell", "-NoProfile", "-Command",
-                          "Start-Process certutil -ArgumentList "
-                          "'-addstore','-f','Root','{}' -Verb RunAs -Wait".format(cer)])
-        return False, "已请求管理员确认（请在弹出的 UAC 窗口点「是」），完成后重试"
+        r2 = subprocess.run(["certutil", "-user", "-addstore", "-f", "Root", str(cer)],
+                            capture_output=True, text=True, errors="replace", timeout=30)
+        if r2.returncode == 0 and is_ca_trusted():
+            return True, "证书已安装（certutil）"
     except Exception:
-        return False, "证书安装失败，请手动安装：{}".format(cer)
+        pass
+    # 4) 最后兜底：提示手动安装（不弹 UAC，说明步骤）
+    return False, "自动安装未生效，请手动安装证书：双击 {} 选择「安装证书」→ 当前用户 → 受信任的根证书颁发机构".format(cer)
+
+
+def _proxy_stale_detect(enable: int, server: str, listening: bool) -> bool:
+    """纯逻辑：代理指向本地 8080 但无服务在听 = 上次抓包残留。"""
+    if not enable:
+        return False
+    if "127.0.0.1:8080" not in server and "localhost:8080" not in server:
+        return False
+    return not listening
+
+
+def stale_proxy() -> bool:
+    """检测是否存在残留抓包代理设置。"""
+    st = read_proxy()
+    try:
+        s = socket.create_connection(("127.0.0.1", PROXY_PORT), timeout=0.4)
+        s.close()
+        listening = True
+    except OSError:
+        listening = False
+    return _proxy_stale_detect(int(st.get("enable", 0) or 0), str(st.get("server", "")),
+                               listening)
+
+
+def cleanup_stale_proxy() -> bool:
+    """清理残留代理（找到并清除返回 True）。"""
+    if stale_proxy():
+        restore_proxy({"enable": 0, "server": "", "auto": ""})
+        return True
+    return False

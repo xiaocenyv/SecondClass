@@ -25,6 +25,22 @@ CAPTURED = (Path(os.environ.get("APPDATA") or os.path.expanduser("~"))
             / "SecondClass" / "captured.json")
 
 
+def _capture_log_path() -> Path:
+    import datetime
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    d = Path(base) / "SecondClass" / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / ("capture-" + datetime.date.today().strftime("%Y%m%d") + ".log")
+
+
+def _log_to_file(text: str):
+    try:
+        with open(_capture_log_path(), "a", encoding="utf-8") as f:
+            f.write("[{}] {}\n".format(time.strftime("%H:%M:%S"), text))
+    except Exception:
+        pass
+
+
 class CaptureWindow(tk.Toplevel):
     """抓包助手；on_captured(ks, secret) 在捕获成功时回调。"""
 
@@ -87,6 +103,7 @@ class CaptureWindow(tk.Toplevel):
                   foreground="#aaaaaa").pack(anchor="w", pady=(4, 0))
 
     def _log(self, text: str):
+        _log_to_file(text)
         self.txt_log.configure(state="normal")
         self.txt_log.insert("end", "[{}] {}\n".format(time.strftime("%H:%M:%S"), text))
         self.txt_log.see("end")
@@ -128,6 +145,9 @@ class CaptureWindow(tk.Toplevel):
         def put(*args):
             self.q.put(args)
         try:
+            # 0) 清理上次可能的残留代理设置
+            if proxy_ctl.cleanup_stale_proxy():
+                put("log", "检测到上次残留的代理设置，已自动还原")
             # 1) CA 证书与信任
             put("log", "生成本地抓包证书…")
             try:

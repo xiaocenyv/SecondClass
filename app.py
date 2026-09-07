@@ -13,8 +13,13 @@ except Exception:
 
 def run_daily_mode() -> int:
     """静默自动刷题模式（任务计划调用）：无 GUI，通知后退出。"""
+    from core.applock import AppLock, DAILY_LOCK_PORT
     from core.config import Config
     from core.daily import run_daily
+    lock = AppLock(DAILY_LOCK_PORT)
+    if not lock.acquire():
+        # 已有 --daily 在运行，避免重复刷题
+        return 0
     try:
         result = run_daily(Config())
         print(json.dumps(result, ensure_ascii=False))
@@ -23,6 +28,8 @@ def run_daily_mode() -> int:
         print(json.dumps({"status": "failed", "detail": repr(e)},
                          ensure_ascii=False))
         return 1
+    finally:
+        lock.release()
 
 
 def run_selfcheck() -> int:
@@ -92,19 +99,33 @@ def main() -> int:
         import tkinter as tk
         from tkinter import messagebox
 
+        from core.applock import AppLock, GUI_LOCK_PORT
         from core.config import Config
         from gui.main_window import MainWindow
 
-        root = tk.Tk()
-        config = Config()
-        MainWindow(root, config)
-        if smoke:
-            # 自检模式：1.5 秒后自动关闭；GUI 能正常构建即通过
-            def _quit():
-                root.destroy()
-            root.after(1500, _quit)
-        root.mainloop()
-        return 0
+        # 单实例锁：重复启动时提示并退出（防双窗口/双代理/双向导）
+        lock = AppLock(GUI_LOCK_PORT)
+        if not lock.acquire() and not smoke:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showinfo("SecondClass 已在运行",
+                                "SecondClass 已经在运行了。\n请查看任务栏/任务管理器中的窗口；"
+                                "本次启动已取消（避免重复弹窗与抓包冲突）。")
+            root.destroy()
+            return 0
+        try:
+            root = tk.Tk()
+            config = Config()
+            MainWindow(root, config)
+            if smoke:
+                # 自检模式：1.5 秒后自动关闭；GUI 能正常构建即通过
+                def _quit():
+                    root.destroy()
+                root.after(1500, _quit)
+            root.mainloop()
+            return 0
+        finally:
+            lock.release()
     except Exception as e:
         try:
             from tkinter import messagebox
