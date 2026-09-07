@@ -389,7 +389,12 @@ class MainWindow:
             self.tray = TrayIcon(on_command=self._on_tray_cmd, tooltip=desc)
             if self.tray.start():
                 self._tray_started = True
-        except Exception:
+            else:
+                self._log("warn", "系统托盘启动失败（{}）".format(
+                    getattr(self.tray, "last_error", "原因未知")))
+                self.tray = None
+        except Exception as e:
+            self._log("warn", "系统托盘启动失败：{}".format(repr(e)))
             self.tray = None
 
     def _on_tray_cmd(self, cmd: str):
