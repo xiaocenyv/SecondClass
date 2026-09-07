@@ -186,12 +186,13 @@ class SetupWizard(tk.Toplevel):
 
     def _open_capture(self):
         from capture import proxy_ctl
-        if not proxy_ctl.wechat_running():
+        running = proxy_ctl.wechat_running()
+        if running is False:
             if not messagebox.askyesno(
-                    "需要电脑版微信",
-                    "检测到电脑版微信没有运行。\n\n"
-                    "请先打开「电脑版微信」→ 登录 → 搜索小程序「第二课堂成绩单」。\n\n"
-                    "打开后点「是」继续（会打开抓包助手）。"):
+                    "没有检测到电脑版微信",
+                    "没有检测到微信在运行（已检查 WeChat/Weixin 等进程）。\n\n"
+                    "请先打开「电脑版微信」→ 登录 → 进小程序「第二课堂成绩单」。\n"
+                    "若你确定微信正在运行，点「是」忽略继续。", icon="question"):
                 return
         from gui.capture_window import CaptureWindow
         CaptureWindow(self, on_captured=self._on_captured)

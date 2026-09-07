@@ -21,15 +21,40 @@ def _wininet_refresh() -> None:
         pass
 
 
-def wechat_running() -> bool:
-    """检测电脑版微信是否在运行（抓包必要前提）。检测失败按运行处理。"""
+# 微信相关进程名（微信 3.x / 4.x 及小程序运行时，大小写不敏感）
+WECHAT_PROCESSES = ("WeChat.exe", "Weixin.exe", "WeChatAppEx.exe",
+                    "WeixinAppEx.exe", "WeChatProxy.exe")
+
+
+def wechat_running() -> bool | None:
+    """检测电脑版微信是否在运行（抓包必要前提）。
+
+    返回 (bool, matched_name) 由调用方按需读取：None 表示检测失败（按运行处理）。
+    """
     try:
-        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq WeChat.exe"],
+        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
                              capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=10).stdout or ""
-        return "WeChat.exe" in out
     except Exception:
-        return True
+        return None
+    for name in WECHAT_PROCESSES:
+        if name.lower() in out.lower():
+            return True  # 已命中（附带进程名由调用方打印）
+    return False
+
+
+def wechat_matched_name() -> str:
+    """返回命中的微信进程名（无则空串）。"""
+    try:
+        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
+                             capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=10).stdout or ""
+    except Exception:
+        return ""
+    for name in WECHAT_PROCESSES:
+        if name.lower() in out.lower():
+            return name
+    return ""
 
 
 def read_proxy() -> dict:

@@ -64,5 +64,44 @@ class TestCertGen(unittest.TestCase):
                     os.environ["APPDATA"] = old
 
 
+class TestWechatDetection(unittest.TestCase):
+    def _mock_tasklist(self, lines):
+        import subprocess
+        from unittest import mock
+
+        class R:
+            stdout = lines
+
+        return mock.patch("subprocess.run", return_value=R())
+
+    def test_weixin4_hit(self):
+        out = ('"Weixin.exe","123","Console","1","12,345 K"\n'
+               '"WeChatAppEx.exe","400","Console","4","50,000 K"\n')
+        with self._mock_tasklist(out):
+            from capture.proxy_ctl import wechat_running, wechat_matched_name
+            self.assertTrue(wechat_running())
+            self.assertEqual(wechat_matched_name(), "Weixin.exe")
+
+    def test_old_wechat_hit(self):
+        out = '"WeChat.exe","100","Console","1","60,000 K"\n'
+        with self._mock_tasklist(out):
+            from capture.proxy_ctl import wechat_running, wechat_matched_name
+            self.assertTrue(wechat_running())
+            self.assertEqual(wechat_matched_name(), "WeChat.exe")
+
+    def test_no_wechat(self):
+        out = '"explorer.exe","5","Console","1","20,000 K"\n'
+        with self._mock_tasklist(out):
+            from capture.proxy_ctl import wechat_running
+            self.assertFalse(wechat_running())
+
+    def test_detect_failure_passes(self):
+        import subprocess
+        from unittest import mock
+        with mock.patch("subprocess.run", side_effect=OSError("x")):
+            from capture.proxy_ctl import wechat_running
+            self.assertIsNone(wechat_running())
+
+
 if __name__ == "__main__":
     unittest.main()

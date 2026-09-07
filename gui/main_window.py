@@ -13,7 +13,7 @@ from gui.tutorial import TutorialWindow
 from gui.worker import Worker
 
 APP_TITLE = "第二课堂自动刷题（SecondClass）"
-APP_VERSION = "2.0"
+from core.version import CURRENT_VERSION as APP_VERSION
 
 LOG_TAG = {"info": ("#333333", ""), "debug": ("#888888", ""),
            "success": ("#1a7f37", "bold"), "warn": ("#b8860b", ""),
@@ -463,14 +463,15 @@ class MainWindow:
         def run():
             try:
                 from core.updater import check_latest, parse_version
+                from core.version import CURRENT_VERSION
                 info = check_latest(repo)
                 if not info:
                     return
                 latest = parse_version(info.get("version", ""))
-                cur = (2, 0, 0)
+                cur = parse_version(CURRENT_VERSION)
                 if latest > cur:
                     txt = "发现新版本 {}（当前 v{}）：{}".format(
-                        info.get("version", "?"), APP_VERSION, info.get("url", ""))
+                        info.get("version", "?"), CURRENT_VERSION, info.get("url", ""))
                     self.root.after(0, lambda: self._log("info", txt))
             except Exception:
                 return

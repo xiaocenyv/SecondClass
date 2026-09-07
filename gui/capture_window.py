@@ -108,13 +108,18 @@ class CaptureWindow(tk.Toplevel):
     def _start(self):
         if self.state in ("starting", "capturing"):
             return
-        if not proxy_ctl.wechat_running():
+        running = proxy_ctl.wechat_running()
+        if running is True:
+            self._log("已检测到微信（{}）".format(proxy_ctl.wechat_matched_name()))
+        elif running is False:
             if not messagebox.askyesno(
-                    "需要电脑版微信",
-                    "检测到电脑版微信没有运行。\n\n请先打开「电脑版微信」并登录，"
-                    "然后在微信里搜索小程序「第二课堂成绩单」。\n\n"
-                    "（现在先打开微信，回来点「是」继续）"):
+                    "没有检测到电脑版微信",
+                    "没有检测到微信在运行（已检查 WeChat/Weixin 等进程）。\n\n"
+                    "请先打开「电脑版微信」并登录，然后在小程序里进「第二课堂成绩单」。\n"
+                    "如果没有安装微信，请安装后重试。\n\n"
+                    "若你确定微信正在运行，点「是」忽略提示继续。", icon="question"):
                 return
+        # running is None（检测失败）时直接放行
         self._log("准备抓包…")
         self._set_state("starting")
         threading.Thread(target=self._run_start, daemon=True).start()
