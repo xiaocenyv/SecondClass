@@ -28,7 +28,15 @@ jobs:
         run: python scripts/make_icon.py
 
       - name: Build exe
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name SecondClass --icon assets/app.ico --version-file version_info.txt app.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name SecondClass --icon assets/app.ico --version-file version_info.txt --collect-all cryptography app.py
+
+      - name: Selfcheck (dependency gate)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist/SecondClass.exe" -ArgumentList "--selfcheck" -PassThru -Wait
+          $log = Join-Path $env:TEMP "SecondClass_selfcheck.log"
+          if (Test-Path $log) { Get-Content $log }
+          if ($p.ExitCode -ne 0) { exit 1 }
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2

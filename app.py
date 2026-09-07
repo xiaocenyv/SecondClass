@@ -26,8 +26,24 @@ def run_daily_mode() -> int:
 
 
 def run_selfcheck() -> int:
-    """零依赖自检：验证打包后全部核心依赖可用（无 GUI，仅输出结果）。"""
-    ok_checks = []
+    """零依赖自检：验证打包后全部核心依赖可用（--windowed 下写日志文件）。"""
+    import os
+    import traceback
+
+    log_path = os.path.join(os.environ.get("TEMP", os.path.expanduser("~")),
+                            "SecondClass_selfcheck.log")
+
+    def fail(stage: str, exc: Exception):
+        msg = "SELFCHECK FAIL [{}]: {}\n{}".format(stage, repr(exc),
+                                                  traceback.format_exc())
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(msg)
+        except Exception:
+            pass
+        print(msg)
+        return 1
+
     try:
         from core.config import Config
         from core.api_client import ApiClient
@@ -35,10 +51,9 @@ def run_selfcheck() -> int:
         from core.daily import run_daily
         from core.scheduler import register, query
         from core.notify import notify
-        ok_checks.append("core 模块导入")
+        ok_checks = ["core 模块导入"]
     except Exception as e:
-        print("FAIL core: {}".format(repr(e)))
-        return 1
+        return fail("core", e)
     try:
         from capture import certgen, proxy_ctl
         from capture.proxy import ProxyService, _parse_headers
@@ -48,19 +63,22 @@ def run_selfcheck() -> int:
         p = ProxyService(port=0)
         ok_checks.append("内置代理（cryptography 证书）")
     except Exception as e:
-        print("FAIL proxy: {}".format(repr(e)))
-        return 1
+        return fail("proxy", e)
     try:
-        import webbrowser  # noqa
         import tkinter as tk
         r = tk.Tk()
         r.withdraw()
         r.destroy()
         ok_checks.append("tkinter GUI")
     except Exception as e:
-        print("FAIL tk: {}".format(repr(e)))
-        return 1
-    print("SELFCHECK OK: " + " / ".join(ok_checks))
+        return fail("tk", e)
+    msg = "SELFCHECK OK: " + " / ".join(ok_checks)
+    try:
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(msg)
+    except Exception:
+        pass
+    print(msg)
     return 0
 
 
