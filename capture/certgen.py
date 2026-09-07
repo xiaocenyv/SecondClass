@@ -123,6 +123,12 @@ def issue_cert(host: str, days: int = 30) -> tuple:
 
 
 def ca_fingerprint() -> str:
-    """返回 CA 证书指纹（大写十六进制，无冒号），用于检测是否已信任。"""
+    """返回 CA 证书指纹（SHA256，大写十六进制，无冒号），用于检测是否已信任。"""
     _key, cert = load_ca()
     return cert.fingerprint(hashes.SHA256()).hex().upper()
+
+
+def ca_thumbprint_sha1() -> str:
+    """返回 CA 证书 Thumbprint（SHA1，X509Store 的 .Thumbprint 同值）。"""
+    _key, cert = load_ca()
+    return cert.fingerprint(hashes.SHA1()).hex().upper()

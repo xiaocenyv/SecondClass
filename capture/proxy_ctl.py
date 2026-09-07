@@ -105,50 +105,70 @@ def ca_cert_file() -> Path:
 
 
 def is_ca_trusted() -> bool:
-    """通过指纹检查 CA 是否已加入当前用户受信任根。"""
+    """通过 X509Store Thumbprint 检查 CA 是否已加入当前用户受信任根。
+
+    certutil 文本输出不含指纹（只有序列号），因此用 PowerShell 证书库
+    按 Thumbprint 精确查询（与安装同一通道，ARM64 稳定）。
+    """
     try:
-        fp = certgen.ca_fingerprint()
+        tp = certgen.ca_thumbprint_sha1()
     except Exception:
         return False
+    script = (
+        "$s = [System.Security.Cryptography.X509Certificates.X509Store]"
+        "::new('Root','CurrentUser');"
+        "$s.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly);"
+        "foreach ($c in $s.Certificates) {"
+        "if ($c.Thumbprint -eq '__TP__') { Write-Output 'YES'; break } }"
+    ).replace("__TP__", tp)
     try:
-        out = subprocess.run(["certutil", "-user", "-store", "Root", fp],
-                             capture_output=True, text=True, errors="replace",
-                             timeout=15).stdout or ""
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                            "-Command", script], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=30)
+        return "YES" in (r.stdout or "")
     except Exception:
         return False
-    return fp in out.upper() or "SecondClass" in out
+
+
+def build_install_script(cer_path: str) -> str:
+    """构造安装证书的 PowerShell 脚本（占位符替换，禁用 format 防大括号误解析）。"""
+    script = (
+        "try {"
+        "$c = [System.Security.Cryptography.X509Certificates.X509Certificate2]"
+        "::new('__CER__');"
+        "$s = [System.Security.Cryptography.X509Certificates.X509Store]"
+        "::new('Root','CurrentUser');"
+        "$s.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite);"
+        "$s.Add($c);$s.Close();Write-Output 'OK'"
+        "} catch { Write-Output ('ERR: ' + $_.Exception.Message) }"
+    )
+    return script.replace("__CER__", cer_path)
 
 
 def install_ca() -> tuple[bool, str]:
     """安装本地 CA 到当前用户受信任根。
 
     首选 PowerShell X509Store API（免 UAC、免进程、ARM64 稳定），
-    certutil 降级兜底。返回 (是否已信任, 说明)。
+    certutil 降级兜底。返回 (是否已信任, 说明)。任何异常转为可读消息。
     """
-    cer = ca_cert_file()
+    try:
+        cer = ca_cert_file()
+    except Exception as e:
+        return False, "证书文件生成失败：{}".format(repr(e))
     # 1) 已信任直接返回
     if is_ca_trusted():
         return True, "证书已信任"
     # 2) PowerShell X509Store（CurrentUser\Root）
-    ps = (
-        "try {"
-        "$c = [System.Security.Cryptography.X509Certificates.X509Certificate2]"
-        "::new('{}');"
-        "$s = [System.Security.Cryptography.X509Certificates.X509Store]"
-        "::new('Root','CurrentUser');"
-        "$s.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite);"
-        "$s.Add($c);$s.Close();Write-Output 'OK'"
-        "} catch { Write-Output ('ERR: ' + $_.Exception.Message) }"
-    ).format(cer)
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
-                            "-Command", ps], capture_output=True, text=True,
+                            "-Command", build_install_script(str(cer))],
+                           capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=60)
-        if "OK" in (r.stdout or ""):
-            if is_ca_trusted():
-                return True, "证书已安装（PowerShell）"
-        elif "ERR:" in (r.stdout or ""):
-            _certutil_fallback = (r.stdout or "").strip()
+        out = r.stdout or ""
+        if "OK" in out and is_ca_trusted():
+            return True, "证书已安装（PowerShell）"
+        if "ERR" in out:
+            pass  # 走兜底
     except Exception:
         pass
     # 3) certutil -user 兜底
@@ -159,8 +179,9 @@ def install_ca() -> tuple[bool, str]:
             return True, "证书已安装（certutil）"
     except Exception:
         pass
-    # 4) 最后兜底：提示手动安装（不弹 UAC，说明步骤）
-    return False, "自动安装未生效，请手动安装证书：双击 {} 选择「安装证书」→ 当前用户 → 受信任的根证书颁发机构".format(cer)
+    # 4) 最后兜底：提示手动安装
+    return False, ("自动安装未生效，请手动安装证书：双击 {} 选择「安装证书」→ "
+                   "当前用户 → 受信任的根证书颁发机构").format(cer)
 
 
 def _proxy_stale_detect(enable: int, server: str, listening: bool) -> bool:

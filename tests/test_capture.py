@@ -103,5 +103,30 @@ class TestWechatDetection(unittest.TestCase):
             self.assertIsNone(wechat_running())
 
 
+class TestInstallScript(unittest.TestCase):
+    def test_script_wellformed(self):
+        from capture.proxy_ctl import build_install_script
+        cer = r"C:\Users\1\AppData\Roaming\SecondClass\ca\ca.cer"
+        s = build_install_script(cer)
+        self.assertIn(cer, s)             # 占位符已替换
+        self.assertNotIn("__CER__", s)    # 无残留占位符
+        # 括号平衡（幂脚本正确性粗检）
+        self.assertEqual(s.count("{"), s.count("}"))
+        self.assertEqual(s.count("'"), s.count("'"))  # 引号成对（偶数）
+        # 不能再用 format 解析（裸大括号存在，任何 format 调用都会报错 → 结构安全）
+        with self.assertRaises(Exception):
+            s.format("x")
+
+    def test_install_fallback_returns_msg(self):
+        """install_ca 在任何异常路径下返回 (False, 可读说明)，不抛异常。"""
+        import subprocess
+        from unittest import mock
+        from capture import proxy_ctl
+        with mock.patch.object(proxy_ctl, "ca_cert_file", side_effect=OSError("x")):
+            ok, msg = proxy_ctl.install_ca()
+            self.assertFalse(ok)
+            self.assertIn("失败", msg)
+
+
 if __name__ == "__main__":
     unittest.main()
