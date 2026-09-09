@@ -224,6 +224,8 @@ class MainWindow:
         self.btn_stop.pack(side="left", padx=10)
         self.lbl_progress = ttk.Label(ops, text="", foreground="#1a7f37")
         self.lbl_progress.pack(side="left", padx=16)
+        ttk.Button(ops, text="退出软件", command=self._quit_all,
+                   style="Danger.TButton").pack(side="right")
 
         # 日志区
         ttk.Label(outer, text="运行日志").pack(anchor="w", pady=(4, 0))
@@ -389,6 +391,9 @@ class MainWindow:
             self.tray = TrayIcon(on_command=self._on_tray_cmd, tooltip=desc)
             if self.tray.start():
                 self._tray_started = True
+                err = getattr(self.tray, "last_error", "")
+                self._log("info", "系统托盘已启动（关闭窗口可最小化到托盘）{}{}".format(
+                    "；注意：{}".format(err) if err else "", ""))
             else:
                 self._log("warn", "系统托盘启动失败（{}）".format(
                     getattr(self.tray, "last_error", "原因未知")))
@@ -415,7 +420,7 @@ class MainWindow:
             self.var_daily.set(not cur)
             self._save_auto()
         elif cmd == "quit":
-            self._quit_through_tray()
+            self._quit_all()
 
     def _quit_through_tray(self):
         if self.worker and not self.worker.finished():
@@ -430,18 +435,36 @@ class MainWindow:
         self.root.destroy()
 
     def _on_close(self):
+        """关闭按钮：显式三选一（最小化到托盘 / 退出 / 取消）。"""
         if self._tray_started and self.config.get("close_to_tray", True):
-            self.root.withdraw()
-            if not self.config.get("tray_hint_shown", False):
-                self.config.patch(tray_hint_shown=True)
-                self.config.save()
-                try:
-                    from core.notify import _toast
-                    _toast("SecondClass 仍在运行",
-                           "已最小化到系统托盘。\n右键托盘图标可打开窗口 / 开始刷题 / 退出。")
-                except Exception:
-                    pass
-            return
+            choice = messagebox.askyesnocancel(
+                "关闭窗口",
+                "要最小化到系统托盘继续运行吗？\n\n"
+                "  · 「是」→ 后台托盘运行（右键任务栏右侧图标可退出，"
+                "图标可能藏在 ▾ 展开里）\n"
+                "  · 「否」→ 退出程序\n"
+                "  · 「取消」→ 继续使用")
+            if choice is None:
+                return  # 取消
+            if choice:
+                self.root.withdraw()
+                if not self.config.get("tray_hint_shown", False):
+                    self.config.patch(tray_hint_shown=True)
+                    self.config.save()
+                    try:
+                        if self.tray:
+                            self.tray.show_balloon(
+                                "SecondClass 仍在运行",
+                                "已最小化到系统托盘。\n"
+                                "右键任务栏右下角图标（可能在 ▾ 展开里）选择退出。")
+                    except Exception:
+                        pass
+                return
+            # 否 → 走退出流程
+        self._quit_all()
+
+    def _quit_all(self):
+        """真正退出（含任务运行确认）。"""
         if self.worker and not self.worker.finished():
             if not messagebox.askyesno("确认退出", "刷题任务还在运行，确定退出吗？"):
                 return

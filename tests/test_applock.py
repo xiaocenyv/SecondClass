@@ -16,6 +16,20 @@ class TestAppLock(unittest.TestCase):
         self.assertTrue(b.acquire())
         b.release()
 
+    def test_activate_signal(self):
+        import threading
+        got = threading.Event()
+        holder = AppLock(39552)
+        caller = AppLock(39552)
+
+        def on_activate():
+            got.set()
+
+        self.assertTrue(holder.acquire(on_activate=on_activate))
+        self.assertFalse(caller.acquire())
+        self.assertTrue(got.wait(timeout=3), "第二实例应触发唤起回调")
+        holder.release()
+
 
 class TestProxyStale(unittest.TestCase):
     def test_stale(self):

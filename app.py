@@ -103,20 +103,16 @@ def main() -> int:
         from core.config import Config
         from gui.main_window import MainWindow
 
-        # 单实例锁：重复启动时提示并退出（防双窗口/双代理/双向导）
+        # 单实例锁：重复启动时向旧实例发"唤起"信号（隐藏窗口时再次双击可找回）
         lock = AppLock(GUI_LOCK_PORT)
         if not lock.acquire() and not smoke:
-            root = tk.Tk()
-            root.withdraw()
-            messagebox.showinfo("SecondClass 已在运行",
-                                "SecondClass 已经在运行了。\n请查看任务栏/任务管理器中的窗口；"
-                                "本次启动已取消（避免重复弹窗与抓包冲突）。")
-            root.destroy()
-            return 0
+            return 0  # 已有实例（已唤起其窗口），本进程直接退出
         try:
             root = tk.Tk()
             config = Config()
-            MainWindow(root, config, enable_tray=not smoke)
+            mw = MainWindow(root, config, enable_tray=not smoke)
+            # 注册"唤起"回调：通过主窗口消息队列显示窗口（线程安全）
+            lock._on_activate = lambda: mw.q.put(("tray_cmd", "open"))
             if smoke:
                 # 自检模式：1.5 秒后自动关闭；GUI 能正常构建即通过
                 def _quit():

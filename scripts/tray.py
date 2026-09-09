@@ -24,7 +24,6 @@ WM_APP = 0x8000
 WM_TRAY = WM_APP + 1
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP = 0x1, 0x2, 0x4
-NIF_INFO = 0x10
 WM_LBUTTONUP = 0x0202
 WM_RBUTTONUP = 0x0205
 TPM_RETURNCMD = 0x0100
@@ -203,21 +202,6 @@ class TrayIcon:
             except Exception:
                 pass
 
-    def show_balloon(self, title: str, message: str, timeout_ms: int = 4000):
-        """弹一次托盘气泡提示（NIF_INFO）。"""
-        if not AVAILABLE or not self._hwnd:
-            return
-        try:
-            nid = self._make_nid()
-            nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_INFO
-            nid.szInfo = message[:255]
-            nid.szInfoTitle = title[:63]
-            nid.uTimeout = timeout_ms
-            nid.dwInfoFlags = 0x00000001  # NIIF_INFO? 0=无图标，1=信息
-            SHELL32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
-        except Exception:
-            pass
-
     # ---------- 内部 ----------
 
     def _make_nid(self) -> NOTIFYICONDATAW:
@@ -268,13 +252,6 @@ class TrayIcon:
                 return
             self._load_icon()
             nid = self._make_nid()
-            # 声明通知版本（NIM_SETVERSION=4；uVersion 与 uTimeout 共用同一插槽）
-            try:
-                ver_nid = self._make_nid()
-                ver_nid.uTimeout = 4
-                SHELL32.Shell_NotifyIconW(4, ctypes.byref(ver_nid))
-            except Exception:
-                pass
             if not SHELL32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid)):
                 self.last_error = "Shell_NotifyIconW(NIM_ADD) 失败"
             self._started.set()

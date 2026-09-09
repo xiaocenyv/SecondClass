@@ -69,10 +69,14 @@ gerr("CreateWindowExW")
 if not hwnd:
     sys.exit(1)
 
-# 图标（python.exe 自身）—— ExtractIconExW 在 shell32！
+# 图标（对桌面 SecondClass.exe 提取）—— ExtractIconExW 在 shell32！
+target = os.path.expandvars(r"%USERPROFILE%\Desktop\SecondClass.exe")
+if not os.path.exists(target):
+    target = sys.executable
+print("图标来源:", target)
 big = wintypes.HICON()
 small = wintypes.HICON()
-ok = S.ExtractIconExW(sys.executable, 0, ctypes.byref(big), ctypes.byref(small), 1)
+ok = S.ExtractIconExW(target, 0, ctypes.byref(big), ctypes.byref(small), 1)
 print("ExtractIconExW 返回 =", ok, "| big =", big.value, "| small =", small.value)
 gerr("ExtractIconExW")
 
