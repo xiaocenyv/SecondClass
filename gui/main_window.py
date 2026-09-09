@@ -435,32 +435,7 @@ class MainWindow:
         self.root.destroy()
 
     def _on_close(self):
-        """关闭按钮：显式三选一（最小化到托盘 / 退出 / 取消）。"""
-        if self._tray_started and self.config.get("close_to_tray", True):
-            choice = messagebox.askyesnocancel(
-                "关闭窗口",
-                "要最小化到系统托盘继续运行吗？\n\n"
-                "  · 「是」→ 后台托盘运行（右键任务栏右侧图标可退出，"
-                "图标可能藏在 ▾ 展开里）\n"
-                "  · 「否」→ 退出程序\n"
-                "  · 「取消」→ 继续使用")
-            if choice is None:
-                return  # 取消
-            if choice:
-                self.root.withdraw()
-                if not self.config.get("tray_hint_shown", False):
-                    self.config.patch(tray_hint_shown=True)
-                    self.config.save()
-                    try:
-                        if self.tray:
-                            self.tray.show_balloon(
-                                "SecondClass 仍在运行",
-                                "已最小化到系统托盘。\n"
-                                "右键任务栏右下角图标（可能在 ▾ 展开里）选择退出。")
-                    except Exception:
-                        pass
-                return
-            # 否 → 走退出流程
+        """关闭窗口 = 退出（后台自动刷题由 Windows 任务计划托管，无需常驻）。"""
         self._quit_all()
 
     def _quit_all(self):
